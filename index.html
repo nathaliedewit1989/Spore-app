@@ -64,7 +64,7 @@ async function getModel(){
   modelPromise=(async()=>{
    await tf.setBackend('cpu'); await tf.ready();
    // Browser TFLite WebAssembly assets must match the exact JS package version.
-   tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');
+   tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/wasm/');
    try{return await tflite.loadTFLiteModel(MODEL_BASE+'mushroom_model_fp16.tflite');}
    catch(err){
     if(String(err).includes('_malloc')){
