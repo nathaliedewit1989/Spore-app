@@ -50,8 +50,7 @@ function renderList(){const el=document.getElementById('items');el.replaceChildr
 function exportData(){const url=URL.createObjectURL(new Blob([JSON.stringify(sightings,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='spore-vondsten.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
 map=L.map('map').setView(center,11);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);markers=L.layerGroup().addTo(map);refresh();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu@4.22.0/dist/tf-backend-cpu.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js"></script>
 <script>
 'use strict';
@@ -59,10 +58,27 @@ map=L.map('map').setView(center,11);L.tileLayer('https://{s}.tile.openstreetmap.
 // Never replace a failed inference with a made-up species name.
 const MODEL_BASE='https://huggingface.co/paulbauriegel/fungitastic-dinov3-vits16-384/resolve/main/';
 let modelPromise,labelsPromise;
-function getModel(){if(!window.tf||!window.tflite)throw Error('AI-bibliotheken zijn niet geladen.');if(!modelPromise){tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');modelPromise=tflite.loadTFLiteModel(MODEL_BASE+'mushroom_model_fp16.tflite').catch(e=>{modelPromise=null;throw e;});}return modelPromise;}
+async function getModel(){
+ if(!window.tf||!window.tflite)throw Error('De AI-bibliotheken zijn niet geladen. Probeer opnieuw in Chrome.');
+ if(!modelPromise){
+  modelPromise=(async()=>{
+   await tf.setBackend('cpu'); await tf.ready();
+   // Browser TFLite WebAssembly assets must match the exact JS package version.
+   tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');
+   try{return await tflite.loadTFLiteModel(MODEL_BASE+'mushroom_model_fp16.tflite');}
+   catch(err){
+    if(String(err).includes('_malloc')){
+     throw Error('De TensorFlow Lite WebAssembly-runtime start niet in deze browser (_malloc). Dit is een bekend compatibiliteitsprobleem. De AI heeft geen herkenning uitgevoerd.');
+    }
+    throw err;
+   }
+  })().catch(e=>{modelPromise=null;throw e;});
+ }
+ return modelPromise;
+}
 function getLabels(){if(!labelsPromise){labelsPromise=fetch(MODEL_BASE+'labels.txt').then(r=>{if(!r.ok)throw Error('Soortenlijst ontbreekt ('+r.status+').');return r.text();}).then(x=>x.trim().split(/\r?\n/)).catch(e=>{labelsPromise=null;throw e;});}return labelsPromise;}
 function probabilities(logits){const m=Math.max(...logits),exp=logits.map(x=>Math.exp(x-m)),sum=exp.reduce((a,b)=>a+b,0);return exp.map(x=>x/sum);}
-async function identify(){const status=document.getElementById('aiStatus'),results=document.getElementById('aiResults'),btn=document.getElementById('aiButton');results.replaceChildren();if(!photoData){status.textContent='Kies eerst een foto.';return;}btn.disabled=true;status.textContent='Experimenteel model laden. Dit kan veel data gebruiken…';try{const [model,labels]=await Promise.all([getModel(),getLabels()]);if(labels.length<1000)throw Error('Het model heeft niet de verwachte grote soortenlijst.');const image=new Image();image.src=photoData;await image.decode();const c=document.createElement('canvas');c.width=384;c.height=384;c.getContext('2d').drawImage(image,0,0,384,384);const pixels=c.getContext('2d').getImageData(0,0,384,384).data;const floats=new Float32Array(384*384*3);for(let i=0;i<384*384;i++){floats[i*3]=pixels[i*4];floats[i*3+1]=pixels[i*4+1];floats[i*3+2]=pixels[i*4+2];}status.textContent='Foto analyseren…';const input=tf.tensor4d(floats,[1,384,384,3]);let output;try{output=model.predict(input);if(Array.isArray(output))throw Error('Onbekend outputformaat.');const logits=Array.from(await output.data());if(logits.length!==labels.length)throw Error('Modeluitvoer en soortenlijst komen niet overeen.');const scores=probabilities(logits);const best=scores.map((p,i)=>({p,name:labels[i]})).sort((a,b)=>b.p-a.p).slice(0,3);for(const [i,s] of best.entries()){const b=document.createElement('button');b.className='secondary result';b.textContent=(i+1)+'. '+s.name+' — '+Math.round(s.p*100)+'% (modelscore)';b.onclick=()=>{document.getElementById('species').value=s.name;status.textContent='Voorstel geselecteerd. De soort is niet onafhankelijk geverifieerd.';};results.append(b);}status.textContent='Mogelijke soorten — modelscore is geen bewijs van juistheid.';}finally{input.dispose();if(output)output.dispose();}}catch(e){status.textContent='AI-herkenning is nog niet werkend: '+e.message+' Er wordt geen uitslag verzonnen.';console.error(e);}finally{btn.disabled=false;}}
+async function identify(){const status=document.getElementById('aiStatus'),results=document.getElementById('aiResults'),btn=document.getElementById('aiButton');results.replaceChildren();if(!photoData){status.textContent='Kies eerst een foto.';return;}btn.disabled=true;status.textContent='AI-model en browserruntime laden (ongeveer 46 MB). Dit kan even duren…';try{const [model,labels]=await Promise.all([getModel(),getLabels()]);if(labels.length<1000)throw Error('Het model heeft niet de verwachte grote soortenlijst.');const image=new Image();image.src=photoData;await image.decode();const c=document.createElement('canvas');c.width=384;c.height=384;c.getContext('2d').drawImage(image,0,0,384,384);const pixels=c.getContext('2d').getImageData(0,0,384,384).data;const floats=new Float32Array(384*384*3);for(let i=0;i<384*384;i++){floats[i*3]=(pixels[i*4]/255-0.485)/0.229;floats[i*3+1]=(pixels[i*4+1]/255-0.456)/0.224;floats[i*3+2]=(pixels[i*4+2]/255-0.406)/0.225;}status.textContent='Foto analyseren…';const input=tf.tensor4d(floats,[1,384,384,3]);let output;try{output=model.predict(input);if(Array.isArray(output))throw Error('Onbekend outputformaat.');const logits=Array.from(await output.data());if(logits.length!==labels.length)throw Error('Modeluitvoer en soortenlijst komen niet overeen.');const scores=probabilities(logits);const best=scores.map((p,i)=>({p,name:labels[i]})).sort((a,b)=>b.p-a.p).slice(0,3);for(const [i,s] of best.entries()){const b=document.createElement('button');b.className='secondary result';b.textContent=(i+1)+'. '+s.name+' — '+Math.round(s.p*100)+'% (modelscore)';b.onclick=()=>{document.getElementById('species').value=s.name;status.textContent='Voorstel geselecteerd. De soort is niet onafhankelijk geverifieerd.';};results.append(b);}status.textContent='Mogelijke soorten — modelscore is geen bewijs van juistheid.';}finally{input.dispose();if(output)output.dispose();}}catch(e){status.textContent='AI-herkenning is nog niet werkend: '+e.message+' Er wordt geen uitslag verzonnen.';console.error(e);}finally{btn.disabled=false;}}
 </script>
 </body>
 </html>
