@@ -122,7 +122,7 @@ async function lookupDutchName(scientific){
    const matchResponse=await fetch('https://api.gbif.org/v1/species/match?name='+encodeURIComponent(latin)+'&kingdom=Fungi');
    if(!matchResponse.ok)throw Error('GBIF soortenmatch is niet beschikbaar');
    const matched=await matchResponse.json();
-   const matchedName=String(matched.canonicalName||matched.scientificName||'').replace(/\\s*\\(.*/, '').trim().toLowerCase();
+   const matchedName=String(matched.canonicalName||matched.scientificName||'').replace(/\s*\(.*/, '').trim().toLowerCase();
    if(matched.matchType==='NONE'||!matchedName.startsWith(latin.toLowerCase())||matched.rank!=='SPECIES')return fallback;
    const key=matched.acceptedUsageKey||matched.usageKey;
    if(!key)return fallback;
