@@ -18,7 +18,7 @@
 <section id="nieuw" class="hidden"><div class="card">
 <h2>Nieuwe vondst</h2>
 <label for="photo">Foto van de paddenstoel</label><input type="file" id="photo" accept="image/*"><img id="preview" class="hidden" alt="Voorbeeld van de gekozen foto">
-<div class="card" style="background:#eff6ee;box-shadow:none"><strong>🔎 AI-herkenning — experimenteel</strong><p class="muted">FungiTastic is een kandidaatmodel met duizenden soorten. Deze integratie is nog niet getest op Android. Als laden of herkennen mislukt, verzint Spore geen uitslag.</p><button id="aiButton" type="button" onclick="identify()">Probeer AI-herkenning</button><p id="aiStatus" class="muted" role="status">Kies eerst een foto.</p><div id="aiResults"></div><div class="warn"><strong>Nooit eetadvies:</strong> AI-resultaten zijn geen betrouwbare basis om paddenstoelen te eten.</div></div>
+<div class="card" style="background:#eff6ee;box-shadow:none"><strong>🔎 AI-herkenning — experimenteel</strong><p class="muted">FungiTastic vergelijkt je foto met 2.827 soorten. De resultaten blijven onzeker, ook wanneer de bovenste soort klopt. Nederlandse namen worden getoond waar ze beschikbaar zijn.</p><button id="aiButton" type="button" onclick="identify()">Probeer AI-herkenning</button><p id="aiStatus" class="muted" role="status">Kies eerst een foto.</p><div id="aiResults"></div><div class="warn"><strong>Nooit eetadvies:</strong> AI-resultaten zijn geen betrouwbare basis om paddenstoelen te eten.</div></div>
 <label for="species">Soortnaam (zelf te corrigeren)</label><input id="species" placeholder="Bijvoorbeeld vliegenzwam">
 <label for="place">Vindplaats</label><input id="place" placeholder="Bijvoorbeeld Den Treek">
 <label for="lat">Breedtegraad</label><input id="lat" type="number" step="any" value="52.1304">
@@ -77,8 +77,44 @@ async function getModel(){
  return modelPromise;
 }
 function getLabels(){if(!labelsPromise){labelsPromise=fetch(MODEL_BASE+'labels.txt').then(r=>{if(!r.ok)throw Error('Soortenlijst ontbreekt ('+r.status+').');return r.text();}).then(x=>x.trim().split(/\r?\n/)).catch(e=>{labelsPromise=null;throw e;});}return labelsPromise;}
+const DUTCH_NAMES={
+'Amanita muscaria':'Vliegenzwam',
+'Amanita citrina':'Gele knolamaniet',
+'Amanita phalloides':'Groene knolamaniet',
+'Amanita rubescens':'Parelamaniet',
+'Amanita pantherina':'Panteramaniet',
+'Amanita virosa':'Kleverige knolamaniet',
+'Amanita fulva':'Roodbruine slanke amaniet',
+'Amanita vaginata':'Grijze slanke amaniet',
+'Macrolepiota procera':'Grote parasolzwam',
+'Chlorophyllum rhacodes':'Knolparasolzwam',
+'Lycoperdon perlatum':'Parelstuifzwam',
+'Calvatia gigantea':'Reuzenbovist',
+'Laetiporus sulphureus':'Zwavelzwam',
+'Sparassis crispa':'Grote sponszwam',
+'Coprinopsis atramentaria':'Grote kale inktzwam',
+'Coprinus comatus':'Geschubde inktzwam',
+'Trametes versicolor':'Gewoon elfenbankje',
+'Schizophyllum commune':'Waaiertje',
+'Fomes fomentarius':'Echte tonderzwam',
+'Hypholoma fasciculare':'Gewone zwavelkop',
+'Russula emetica':'Braakrussula',
+'Laccaria laccata':'Gewone fopzwam',
+'Boletus edulis':'Eekhoorntjesbrood',
+'Imleria badia':'Kastanjeboleet',
+'Cantharellus cibarius':'Hanenkam',
+'Craterellus cornucopioides':'Hoorn van overvloed',
+'Hygrocybe conica':'Zwartwordende wasplaat',
+'Pleurotus ostreatus':'Gewone oesterzwam',
+'Armillaria mellea':'Echte honingzwam',
+'Marasmius rotula':'Wieltje',
+'Clathrus archeri':'Inktviszwam',
+'Phallus impudicus':'Grote stinkzwam',
+'Agaricus campestris':'Weidechampignon'
+};
+function translatedLabel(scientific){const latin=scientific.trim();const common=DUTCH_NAMES[latin];return common?common+' — '+latin:latin+' (Nederlandse naam nog niet beschikbaar)';}
 function probabilities(logits){const m=Math.max(...logits),exp=logits.map(x=>Math.exp(x-m)),sum=exp.reduce((a,b)=>a+b,0);return exp.map(x=>x/sum);}
-async function identify(){const status=document.getElementById('aiStatus'),results=document.getElementById('aiResults'),btn=document.getElementById('aiButton');results.replaceChildren();if(!photoData){status.textContent='Kies eerst een foto.';return;}btn.disabled=true;status.textContent='AI-model en browserruntime laden (ongeveer 46 MB). Dit kan even duren…';try{const [model,labels]=await Promise.all([getModel(),getLabels()]);if(labels.length<1000)throw Error('Het model heeft niet de verwachte grote soortenlijst.');const image=new Image();image.src=photoData;await image.decode();const c=document.createElement('canvas');c.width=384;c.height=384;c.getContext('2d').drawImage(image,0,0,384,384);const pixels=c.getContext('2d').getImageData(0,0,384,384).data;const floats=new Float32Array(384*384*3);for(let i=0;i<384*384;i++){floats[i*3]=(pixels[i*4]/255-0.485)/0.229;floats[i*3+1]=(pixels[i*4+1]/255-0.456)/0.224;floats[i*3+2]=(pixels[i*4+2]/255-0.406)/0.225;}status.textContent='Foto analyseren…';const input=tf.tensor4d(floats,[1,384,384,3]);let output;try{output=model.predict(input);if(Array.isArray(output))throw Error('Onbekend outputformaat.');const logits=Array.from(await output.data());if(logits.length!==labels.length)throw Error('Modeluitvoer en soortenlijst komen niet overeen.');const scores=probabilities(logits);const best=scores.map((p,i)=>({p,name:labels[i]})).sort((a,b)=>b.p-a.p).slice(0,3);for(const [i,s] of best.entries()){const b=document.createElement('button');b.className='secondary result';b.textContent=(i+1)+'. '+s.name+' — '+Math.round(s.p*100)+'% (modelscore)';b.onclick=()=>{document.getElementById('species').value=s.name;status.textContent='Voorstel geselecteerd. De soort is niet onafhankelijk geverifieerd.';};results.append(b);}status.textContent='Mogelijke soorten — modelscore is geen bewijs van juistheid.';}finally{input.dispose();if(output)output.dispose();}}catch(e){status.textContent='AI-herkenning is nog niet werkend: '+e.message+' Er wordt geen uitslag verzonnen.';console.error(e);}finally{btn.disabled=false;}}
+async function identify(){const status=document.getElementById('aiStatus'),results=document.getElementById('aiResults'),btn=document.getElementById('aiButton');results.replaceChildren();if(!photoData){status.textContent='Kies eerst een foto.';return;}btn.disabled=true;status.textContent='AI-model en browserruntime laden (ongeveer 46 MB). Dit kan even duren…';try{const [model,labels]=await Promise.all([getModel(),getLabels()]);if(labels.length<1000)throw Error('Het model heeft niet de verwachte grote soortenlijst.');const image=new Image();image.src=photoData;await image.decode();const c=document.createElement('canvas');c.width=384;c.height=384;c.getContext('2d').drawImage(image,0,0,384,384);const pixels=c.getContext('2d').getImageData(0,0,384,384).data;const floats=new Float32Array(384*384*3);for(let i=0;i<384*384;i++){floats[i*3]=pixels[i*4];floats[i*3+1]=pixels[i*4+1];floats[i*3+2]=pixels[i*4+2];}status.textContent='Foto analyseren…';const input=tf.tensor4d(floats,[1,384,384,3]);let output;try{output=model.predict(input);if(Array.isArray(output))throw Error('Onbekend outputformaat.');const logits=Array.from(await output.data());if(logits.length!==labels.length)throw Error('Modeluitvoer en soortenlijst komen niet overeen.');const scores=probabilities(logits);const best=scores.map((p,i)=>({p,name:labels[i]})).sort((a,b)=>b.p-a.p).slice(0,3);for(const [i,s] of best.entries()){const b=document.createElement('button');b.className='secondary result';b.textContent=(i+1)+'. '+translatedLabel(s.name)+' — '+(s.p*100).toFixed(1)+'% (modelscore, geen zekerheid)';b.onclick=()=>{document.getElementById('species').value=DUTCH_NAMES[s.name]||s.name;status.textContent='Voorstel geselecteerd. De soort is niet onafhankelijk geverifieerd.';};results.append(b);}status.textContent='Mogelijke soorten. De modelscore verdeelt kansmassa over 2.827 soorten en is géén betrouwbare zekerheidsscore.';}finally{input.dispose();if(output)output.dispose();}}catch(e){status.textContent='AI-herkenning is nog niet werkend: '+e.message+' Er wordt geen uitslag verzonnen.';console.error(e);}finally{btn.disabled=false;}}
 </script>
 </body>
 </html>
