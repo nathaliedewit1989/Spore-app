@@ -17,7 +17,7 @@
 <section id="kaart"><div class="card"><h2>Vondsten op de kaart</h2><p class="muted">Alleen vondsten die je op dit toestel hebt opgeslagen. Nog niet gedeeld met andere gebruikers.</p><div id="map"></div></div></section>
 <section id="nieuw" class="hidden"><div class="card">
 <h2>Nieuwe vondst</h2>
-<label for="photo">Foto van de paddenstoel</label><input type="file" id="photo" accept="image/*" capture="environment"><img id="preview" class="hidden" alt="Voorbeeld van de gekozen foto">
+<label for="photo">Foto van de paddenstoel</label><input type="file" id="photo" accept="image/*"><img id="preview" class="hidden" alt="Voorbeeld van de gekozen foto">
 <div class="card" style="background:#eff6ee;box-shadow:none"><strong>🔎 AI-herkenning — experimenteel</strong><p class="muted">FungiTastic is een kandidaatmodel met duizenden soorten. Deze integratie is nog niet getest op Android. Als laden of herkennen mislukt, verzint Spore geen uitslag.</p><button id="aiButton" type="button" onclick="identify()">Probeer AI-herkenning</button><p id="aiStatus" class="muted" role="status">Kies eerst een foto.</p><div id="aiResults"></div><div class="warn"><strong>Nooit eetadvies:</strong> AI-resultaten zijn geen betrouwbare basis om paddenstoelen te eten.</div></div>
 <label for="species">Soortnaam (zelf te corrigeren)</label><input id="species" placeholder="Bijvoorbeeld vliegenzwam">
 <label for="place">Vindplaats</label><input id="place" placeholder="Bijvoorbeeld Den Treek">
